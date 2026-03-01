@@ -1,0 +1,5 @@
+{
+  "name": "KORANTENG",
+  "description": "Decisive planning - A productivity app based on the 4-quadrant Eisenhower Matrix.",
+  "requestFramePermissions": ["microphone"]
+}
