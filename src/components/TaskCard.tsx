@@ -29,6 +29,7 @@ export function TaskCard({ task, onToggleComplete, onDelete, onClick }: TaskCard
     transform: CSS.Transform.toString(transform),
     transition,
     opacity: isDragging ? 0.5 : 1,
+    touchAction: "none",
   };
 
   const isOverdue = task.deadline && isPast(new Date(task.deadline)) && !isToday(new Date(task.deadline)) && !task.completed;
