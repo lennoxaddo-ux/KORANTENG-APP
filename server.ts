@@ -48,7 +48,7 @@ function initDb() {
     `);
     console.log("Database tables initialized successfully");
 
-    // Seed initial aspects if table is empty
+    // Check if project_aspects table has data
     const aspectsCount = db.prepare("SELECT COUNT(*) as count FROM project_aspects").get() as { count: number };
     console.log(`Current project aspects count: ${aspectsCount.count}`);
     
@@ -60,9 +60,14 @@ function initDb() {
         { id: '3', name: 'Development', progress: 30, health: 'green', next_milestone: 'Alpha Release' },
         { id: '4', name: 'Marketing', progress: 15, health: 'red', next_milestone: 'Brand Identity Launch' }
       ];
+      
       const insertAspect = db.prepare("INSERT OR REPLACE INTO project_aspects (id, name, progress, health, next_milestone) VALUES (?, ?, ?, ?, ?)");
+      
       db.transaction(() => {
-        initialAspects.forEach(a => insertAspect.run(a.id, a.name, a.progress, a.health, a.next_milestone));
+        for (const a of initialAspects) {
+          console.log(`Seeding aspect: ${a.name}`);
+          insertAspect.run(a.id, a.name, a.progress, a.health, a.next_milestone);
+        }
       })();
       console.log("Seeding complete");
     }
@@ -191,16 +196,18 @@ async function startServer() {
           { id: '3', name: 'Development', progress: 30, health: 'green', next_milestone: 'Alpha Release' },
           { id: '4', name: 'Marketing', progress: 15, health: 'red', next_milestone: 'Brand Identity Launch' }
         ];
-        const insertAspect = db.prepare("INSERT INTO project_aspects (id, name, progress, health, next_milestone) VALUES (?, ?, ?, ?, ?)");
-        initialAspects.forEach(a => insertAspect.run(a.id, a.name, a.progress, a.health, a.next_milestone));
+        const insertAspect = db.prepare("INSERT OR REPLACE INTO project_aspects (id, name, progress, health, next_milestone) VALUES (?, ?, ?, ?, ?)");
+        db.transaction(() => {
+          initialAspects.forEach(a => insertAspect.run(a.id, a.name, a.progress, a.health, a.next_milestone));
+        })();
         aspects = db.prepare("SELECT * FROM project_aspects ORDER BY name ASC").all();
       }
       
-      console.log(`Found ${aspects.length} aspects`);
+      console.log(`GET /api/aspects: Returning ${aspects.length} aspects`);
       res.json(aspects);
     } catch (err) {
       console.error("GET /api/aspects error:", err);
-      res.status(500).json({ error: "Internal server error" });
+      res.status(500).json({ error: String(err) });
     }
   });
 
@@ -218,23 +225,27 @@ async function startServer() {
     }
   });
 
-  app.post("/api/aspects/seed", (req, res) => {
+  app.post("/api/aspects/reset", (req, res) => {
     try {
-      console.log("POST /api/aspects/seed requested");
+      console.log("POST /api/aspects/reset requested");
+      db.prepare("DELETE FROM project_aspects").run();
+      console.log("Table project_aspects cleared");
+      
       const initialAspects = [
         { id: '1', name: 'Strategy', progress: 45, health: 'green', next_milestone: 'Q2 Roadmap Review' },
         { id: '2', name: 'Design', progress: 70, health: 'yellow', next_milestone: 'High-Fidelity Prototypes' },
         { id: '3', name: 'Development', progress: 30, health: 'green', next_milestone: 'Alpha Release' },
         { id: '4', name: 'Marketing', progress: 15, health: 'red', next_milestone: 'Brand Identity Launch' }
       ];
-      const insertAspect = db.prepare("INSERT OR REPLACE INTO project_aspects (id, name, progress, health, next_milestone) VALUES (?, ?, ?, ?, ?)");
+      const insertAspect = db.prepare("INSERT INTO project_aspects (id, name, progress, health, next_milestone) VALUES (?, ?, ?, ?, ?)");
       db.transaction(() => {
         initialAspects.forEach(a => insertAspect.run(a.id, a.name, a.progress, a.health, a.next_milestone));
       })();
-      console.log("Manual seeding complete via API");
-      res.json({ success: true, message: "Seeding complete" });
+      
+      console.log("Database reset and re-seeded successfully");
+      res.json({ success: true, message: "Database reset complete" });
     } catch (err) {
-      console.error("POST /api/aspects/seed error:", err);
+      console.error("POST /api/aspects/reset error:", err);
       res.status(500).json({ error: String(err) });
     }
   });

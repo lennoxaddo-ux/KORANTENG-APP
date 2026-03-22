@@ -74,6 +74,10 @@ export default function App() {
     }
   }, [tasks, isLoading]);
 
+  useEffect(() => {
+    console.log("App: Aspects state changed:", aspects.length, aspects);
+  }, [aspects]);
+
   const fetchTasks = async () => {
     console.log("App: Fetching tasks...");
     try {
@@ -149,21 +153,21 @@ export default function App() {
     console.log("App: handleInitializeAspects triggered");
     setIsInitializingAspects(true);
     try {
-      console.log("App: Sending POST /api/aspects/seed...");
-      const response = await fetch("/api/aspects/seed", { 
+      console.log("App: Sending POST /api/aspects/reset...");
+      const response = await fetch("/api/aspects/reset", { 
         method: "POST",
         headers: { 'Content-Type': 'application/json' }
       });
       
-      console.log("App: Seed response status:", response.status);
+      console.log("App: Reset response status:", response.status);
       const result = await response.json();
-      console.log("App: Seed result:", result);
+      console.log("App: Reset result:", result);
 
       if (response.ok) {
-        console.log("App: Seeding successful, triggering fetchAspects...");
+        console.log("App: Reset successful, triggering fetchAspects...");
         await fetchAspects();
       } else {
-        console.error("App: Seeding failed on server:", result.error || "Unknown error");
+        console.error("App: Reset failed on server:", result.error || "Unknown error");
       }
     } catch (error) {
       console.error("App: Network or unexpected error during initialization:", error);
@@ -507,6 +511,7 @@ export default function App() {
                 aspects={aspects} 
                 onUpdateAspect={handleUpdateAspect}
                 onInitialize={handleInitializeAspects}
+                onRefresh={fetchAspects}
                 onAddAspect={handleAddAspect}
                 onDeleteAspect={handleDeleteAspect}
                 isInitializing={isInitializingAspects}

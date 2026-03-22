@@ -8,6 +8,7 @@ interface ProjectNerveCenterProps {
   aspects: ProjectAspect[];
   onUpdateAspect: (id: string, updates: Partial<ProjectAspect>) => void;
   onInitialize?: () => void;
+  onRefresh?: () => void;
   onAddAspect?: (name: string) => void;
   onDeleteAspect?: (id: string) => void;
   isInitializing?: boolean;
@@ -17,10 +18,12 @@ export function ProjectNerveCenter({
   aspects, 
   onUpdateAspect, 
   onInitialize, 
+  onRefresh,
   onAddAspect, 
   onDeleteAspect,
   isInitializing = false
 }: ProjectNerveCenterProps) {
+  console.log("ProjectNerveCenter: Rendering with aspects:", aspects.length, aspects);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValues, setEditValues] = useState<Partial<ProjectAspect>>({});
   const [isAdding, setIsAdding] = useState(false);
@@ -77,31 +80,43 @@ export function ProjectNerveCenter({
         <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-white shadow-sm">
           <Activity className="h-8 w-8 text-stone-300" />
         </div>
-        <h3 className="text-lg font-black text-stone-900">No workstreams found</h3>
+        <h3 className="text-lg font-black text-stone-900">Nerve Center Offline</h3>
         <p className="max-w-xs text-sm font-bold text-stone-500 mb-6">
-          The Nerve Center is currently offline. Please ensure your project aspects are correctly initialized in the database.
+          No active workstreams were found in the database. Initialize the Nerve Center to restore the default project monitoring aspects.
         </p>
         {onInitialize && (
-          <button
-            onClick={() => {
-              console.log("ProjectNerveCenter: Initialize button clicked");
-              onInitialize();
-            }}
-            disabled={isInitializing}
-            className="group relative flex items-center gap-2 overflow-hidden rounded-xl bg-indigo-600 px-8 py-4 text-xs font-black uppercase tracking-widest text-white shadow-lg shadow-indigo-100 transition-all hover:bg-indigo-700 disabled:opacity-70"
-          >
-            {isInitializing ? (
-              <>
-                <Loader2 className="h-4 w-4 animate-spin" />
-                <span>Initializing Nerve Center...</span>
-              </>
-            ) : (
-              <>
-                <Activity className="h-4 w-4 transition-transform group-hover:scale-110" />
-                <span>Initialize Nerve Center</span>
-              </>
+          <div className="flex flex-col sm:flex-row items-center gap-3">
+            <button
+              onClick={() => {
+                console.log("ProjectNerveCenter: Initialize button clicked");
+                onInitialize();
+              }}
+              disabled={isInitializing}
+              className="group relative flex items-center gap-2 overflow-hidden rounded-xl bg-indigo-600 px-8 py-4 text-xs font-black uppercase tracking-widest text-white shadow-lg shadow-indigo-100 transition-all hover:bg-indigo-700 disabled:opacity-70"
+            >
+              {isInitializing ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <span>Initializing...</span>
+                </>
+              ) : (
+                <>
+                  <Activity className="h-4 w-4 transition-transform group-hover:scale-110" />
+                  <span>Initialize Nerve Center</span>
+                </>
+              )}
+            </button>
+            
+            {onRefresh && !isInitializing && (
+              <button
+                onClick={onRefresh}
+                className="flex items-center gap-2 rounded-xl bg-white border border-stone-200 px-8 py-4 text-xs font-black uppercase tracking-widest text-stone-600 hover:bg-stone-50 transition-all"
+              >
+                <TrendingUp className="h-4 w-4" />
+                <span>Retry Sync</span>
+              </button>
             )}
-          </button>
+          </div>
         )}
       </div>
     );
@@ -110,7 +125,21 @@ export function ProjectNerveCenter({
   return (
     <div className="space-y-8">
       <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-black text-stone-900 tracking-tight">Active Workstreams</h2>
+        <div className="flex items-center gap-4">
+          <h2 className="text-2xl font-black text-stone-900 tracking-tight">Active Workstreams</h2>
+          {onRefresh && (
+            <button
+              onClick={() => {
+                console.log("ProjectNerveCenter: Refresh button clicked");
+                onRefresh();
+              }}
+              className="flex h-8 w-8 items-center justify-center rounded-lg bg-stone-100 text-stone-500 hover:bg-stone-200 hover:text-stone-700 transition-all"
+              title="Refresh Workstreams"
+            >
+              <TrendingUp className="h-4 w-4" />
+            </button>
+          )}
+        </div>
         {onAddAspect && (
           <button
             onClick={() => setIsAdding(true)}
