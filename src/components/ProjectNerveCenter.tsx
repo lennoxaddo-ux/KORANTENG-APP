@@ -83,16 +83,24 @@ export function ProjectNerveCenter({
         </p>
         {onInitialize && (
           <button
-            onClick={onInitialize}
+            onClick={() => {
+              console.log("ProjectNerveCenter: Initialize button clicked");
+              onInitialize();
+            }}
             disabled={isInitializing}
-            className="flex items-center gap-2 rounded-xl bg-indigo-600 px-6 py-3 text-xs font-black uppercase tracking-widest text-white shadow-lg shadow-indigo-100 hover:bg-indigo-700 disabled:opacity-50 transition-all"
+            className="group relative flex items-center gap-2 overflow-hidden rounded-xl bg-indigo-600 px-8 py-4 text-xs font-black uppercase tracking-widest text-white shadow-lg shadow-indigo-100 transition-all hover:bg-indigo-700 disabled:opacity-70"
           >
             {isInitializing ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                <span>Initializing Nerve Center...</span>
+              </>
             ) : (
-              <Activity className="h-4 w-4" />
+              <>
+                <Activity className="h-4 w-4 transition-transform group-hover:scale-110" />
+                <span>Initialize Nerve Center</span>
+              </>
             )}
-            {isInitializing ? "Initializing..." : "Initialize Nerve Center"}
           </button>
         )}
       </div>

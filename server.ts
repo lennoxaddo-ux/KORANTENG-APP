@@ -21,48 +21,57 @@ try {
 }
 
 // Initialize database
-try {
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS tasks (
-      id TEXT PRIMARY KEY,
-      title TEXT NOT NULL,
-      description TEXT,
-      quadrant INTEGER DEFAULT 0,
-      completed INTEGER DEFAULT 0,
-      deadline TEXT,
-      notes TEXT,
-      attachments TEXT,
-      created_at TEXT DEFAULT CURRENT_TIMESTAMP
-    );
+function initDb() {
+  try {
+    console.log("Initializing database tables...");
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS tasks (
+        id TEXT PRIMARY KEY,
+        title TEXT NOT NULL,
+        description TEXT,
+        quadrant INTEGER DEFAULT 0,
+        completed INTEGER DEFAULT 0,
+        deadline TEXT,
+        notes TEXT,
+        attachments TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );
 
-    CREATE TABLE IF NOT EXISTS project_aspects (
-      id TEXT PRIMARY KEY,
-      name TEXT NOT NULL,
-      progress INTEGER DEFAULT 0,
-      health TEXT DEFAULT 'green',
-      next_milestone TEXT,
-      updated_at TEXT DEFAULT CURRENT_TIMESTAMP
-    );
-  `);
-  console.log("Database tables initialized");
+      CREATE TABLE IF NOT EXISTS project_aspects (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        progress INTEGER DEFAULT 0,
+        health TEXT DEFAULT 'green',
+        next_milestone TEXT,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+    console.log("Database tables initialized successfully");
 
-  // Seed initial aspects if table is empty
-  const aspectsCount = db.prepare("SELECT COUNT(*) as count FROM project_aspects").get() as { count: number };
-  if (aspectsCount.count === 0) {
-    console.log("Seeding initial project aspects...");
-    const initialAspects = [
-      { id: '1', name: 'Strategy', progress: 45, health: 'green', next_milestone: 'Q2 Roadmap Review' },
-      { id: '2', name: 'Design', progress: 70, health: 'yellow', next_milestone: 'High-Fidelity Prototypes' },
-      { id: '3', name: 'Development', progress: 30, health: 'green', next_milestone: 'Alpha Release' },
-      { id: '4', name: 'Marketing', progress: 15, health: 'red', next_milestone: 'Brand Identity Launch' }
-    ];
-    const insertAspect = db.prepare("INSERT INTO project_aspects (id, name, progress, health, next_milestone) VALUES (?, ?, ?, ?, ?)");
-    initialAspects.forEach(a => insertAspect.run(a.id, a.name, a.progress, a.health, a.next_milestone));
-    console.log("Seeding complete");
+    // Seed initial aspects if table is empty
+    const aspectsCount = db.prepare("SELECT COUNT(*) as count FROM project_aspects").get() as { count: number };
+    console.log(`Current project aspects count: ${aspectsCount.count}`);
+    
+    if (aspectsCount.count === 0) {
+      console.log("Seeding initial project aspects...");
+      const initialAspects = [
+        { id: '1', name: 'Strategy', progress: 45, health: 'green', next_milestone: 'Q2 Roadmap Review' },
+        { id: '2', name: 'Design', progress: 70, health: 'yellow', next_milestone: 'High-Fidelity Prototypes' },
+        { id: '3', name: 'Development', progress: 30, health: 'green', next_milestone: 'Alpha Release' },
+        { id: '4', name: 'Marketing', progress: 15, health: 'red', next_milestone: 'Brand Identity Launch' }
+      ];
+      const insertAspect = db.prepare("INSERT OR REPLACE INTO project_aspects (id, name, progress, health, next_milestone) VALUES (?, ?, ?, ?, ?)");
+      db.transaction(() => {
+        initialAspects.forEach(a => insertAspect.run(a.id, a.name, a.progress, a.health, a.next_milestone));
+      })();
+      console.log("Seeding complete");
+    }
+  } catch (err) {
+    console.error("Database initialization error:", err);
   }
-} catch (err) {
-  console.error("Database initialization error:", err);
 }
+
+initDb();
 
 // Add columns if they don't exist (for existing databases)
 try { db.exec("ALTER TABLE tasks ADD COLUMN notes TEXT"); } catch (e) {}
@@ -211,18 +220,22 @@ async function startServer() {
 
   app.post("/api/aspects/seed", (req, res) => {
     try {
+      console.log("POST /api/aspects/seed requested");
       const initialAspects = [
         { id: '1', name: 'Strategy', progress: 45, health: 'green', next_milestone: 'Q2 Roadmap Review' },
         { id: '2', name: 'Design', progress: 70, health: 'yellow', next_milestone: 'High-Fidelity Prototypes' },
         { id: '3', name: 'Development', progress: 30, health: 'green', next_milestone: 'Alpha Release' },
         { id: '4', name: 'Marketing', progress: 15, health: 'red', next_milestone: 'Brand Identity Launch' }
       ];
-      const insertAspect = db.prepare("INSERT OR IGNORE INTO project_aspects (id, name, progress, health, next_milestone) VALUES (?, ?, ?, ?, ?)");
-      initialAspects.forEach(a => insertAspect.run(a.id, a.name, a.progress, a.health, a.next_milestone));
-      res.json({ success: true });
+      const insertAspect = db.prepare("INSERT OR REPLACE INTO project_aspects (id, name, progress, health, next_milestone) VALUES (?, ?, ?, ?, ?)");
+      db.transaction(() => {
+        initialAspects.forEach(a => insertAspect.run(a.id, a.name, a.progress, a.health, a.next_milestone));
+      })();
+      console.log("Manual seeding complete via API");
+      res.json({ success: true, message: "Seeding complete" });
     } catch (err) {
       console.error("POST /api/aspects/seed error:", err);
-      res.status(500).json({ error: "Internal server error" });
+      res.status(500).json({ error: String(err) });
     }
   });
 
