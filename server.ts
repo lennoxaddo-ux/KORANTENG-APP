@@ -9,21 +9,36 @@ const __dirname = path.dirname(__filename);
 
 console.log("Starting server initialization...");
 
-let db: any;
+// Constants
+const PORT = 3000;
+const DB_PATH = path.join(process.cwd(), "tasks.db");
+
+const INITIAL_ASPECTS = [
+  { id: '1', name: 'Strategy', progress: 45, health: 'green', next_milestone: 'Q2 Roadmap Review' },
+  { id: '2', name: 'Design', progress: 70, health: 'yellow', next_milestone: 'High-Fidelity Prototypes' },
+  { id: '3', name: 'Development', progress: 30, health: 'green', next_milestone: 'Alpha Release' },
+  { id: '4', name: 'Marketing', progress: 15, health: 'red', next_milestone: 'Brand Identity Launch' }
+];
+
+// Database Setup
+let db: Database.Database;
 try {
-  const dbPath = path.join(process.cwd(), "tasks.db");
-  console.log("Opening database at:", dbPath);
-  db = new Database(dbPath);
+  console.log("Opening database at:", DB_PATH);
+  db = new Database(DB_PATH);
+  // Enable WAL mode for better concurrency
+  db.pragma('journal_mode = WAL');
   console.log("Database opened successfully");
 } catch (err) {
   console.error("Failed to open database file, falling back to in-memory:", err);
   db = new Database(":memory:");
 }
 
-// Initialize database
+// Initialize database tables
 function initDb() {
   try {
     console.log("Initializing database tables...");
+    
+    // Tasks Table
     db.exec(`
       CREATE TABLE IF NOT EXISTS tasks (
         id TEXT PRIMARY KEY,
@@ -36,7 +51,10 @@ function initDb() {
         attachments TEXT,
         created_at TEXT DEFAULT CURRENT_TIMESTAMP
       );
+    `);
 
+    // Project Aspects Table
+    db.exec(`
       CREATE TABLE IF NOT EXISTS project_aspects (
         id TEXT PRIMARY KEY,
         name TEXT NOT NULL,
@@ -46,86 +64,126 @@ function initDb() {
         updated_at TEXT DEFAULT CURRENT_TIMESTAMP
       );
     `);
-    console.log("Database tables initialized successfully");
 
-    // Check if project_aspects table has data
+    // Migrations / Column Checks for tasks
+    const taskColumns = db.prepare("PRAGMA table_info(tasks)").all() as any[];
+    const hasNotes = taskColumns.some(c => c.name === 'notes');
+    const hasAttachments = taskColumns.some(c => c.name === 'attachments');
+
+    if (!hasNotes) {
+      console.log("Adding 'notes' column to tasks table...");
+      db.exec("ALTER TABLE tasks ADD COLUMN notes TEXT");
+    }
+    if (!hasAttachments) {
+      console.log("Adding 'attachments' column to tasks table...");
+      db.exec("ALTER TABLE tasks ADD COLUMN attachments TEXT");
+    }
+
+    // Migrations / Column Checks for project_aspects
+    const aspectColumns = db.prepare("PRAGMA table_info(project_aspects)").all() as any[];
+    const hasNextMilestone = aspectColumns.some(c => c.name === 'next_milestone');
+    const hasUpdatedAt = aspectColumns.some(c => c.name === 'updated_at');
+
+    if (!hasNextMilestone) {
+      console.log("Adding 'next_milestone' column to project_aspects table...");
+      db.exec("ALTER TABLE project_aspects ADD COLUMN next_milestone TEXT");
+    }
+    if (!hasUpdatedAt) {
+      console.log("Adding 'updated_at' column to project_aspects table...");
+      db.exec("ALTER TABLE project_aspects ADD COLUMN updated_at TEXT DEFAULT CURRENT_TIMESTAMP");
+    }
+
+    // Seed Initial Data if empty
     const aspectsCount = db.prepare("SELECT COUNT(*) as count FROM project_aspects").get() as { count: number };
     console.log(`Current project aspects count: ${aspectsCount.count}`);
     
     if (aspectsCount.count === 0) {
-      console.log("Seeding initial project aspects...");
-      const initialAspects = [
-        { id: '1', name: 'Strategy', progress: 45, health: 'green', next_milestone: 'Q2 Roadmap Review' },
-        { id: '2', name: 'Design', progress: 70, health: 'yellow', next_milestone: 'High-Fidelity Prototypes' },
-        { id: '3', name: 'Development', progress: 30, health: 'green', next_milestone: 'Alpha Release' },
-        { id: '4', name: 'Marketing', progress: 15, health: 'red', next_milestone: 'Brand Identity Launch' }
-      ];
-      
-      const insertAspect = db.prepare("INSERT OR REPLACE INTO project_aspects (id, name, progress, health, next_milestone) VALUES (?, ?, ?, ?, ?)");
-      
-      db.transaction(() => {
-        for (const a of initialAspects) {
-          console.log(`Seeding aspect: ${a.name}`);
-          insertAspect.run(a.id, a.name, a.progress, a.health, a.next_milestone);
-        }
-      })();
-      console.log("Seeding complete");
+      seedAspects();
     }
+
+    console.log("Database initialization complete");
   } catch (err) {
     console.error("Database initialization error:", err);
   }
 }
 
-initDb();
+function seedAspects() {
+  console.log("Seeding initial project aspects...");
+  const insertAspect = db.prepare(`
+    INSERT OR REPLACE INTO project_aspects (id, name, progress, health, next_milestone) 
+    VALUES (?, ?, ?, ?, ?)
+  `);
+  
+  const transaction = db.transaction((aspects) => {
+    for (const a of aspects) {
+      insertAspect.run(a.id, a.name, a.progress, a.health, a.next_milestone);
+    }
+  });
 
-// Add columns if they don't exist (for existing databases)
-try { db.exec("ALTER TABLE tasks ADD COLUMN notes TEXT"); } catch (e) {}
-try { db.exec("ALTER TABLE tasks ADD COLUMN attachments TEXT"); } catch (e) {}
+  transaction(INITIAL_ASPECTS);
+  console.log("Seeding complete");
+}
+
+initDb();
 
 async function startServer() {
   const app = express();
-  const PORT = 3000;
 
   app.use(express.json());
+
+  // Logging middleware
+  app.use((req, res, next) => {
+    console.log(`${new Date().toISOString()} - ${req.method} ${req.url}`);
+    next();
+  });
 
   // Health Check
   app.get("/api/health", (req, res) => {
     try {
       const aspectsCount = db.prepare("SELECT COUNT(*) as count FROM project_aspects").get() as { count: number };
+      const tasksCount = db.prepare("SELECT COUNT(*) as count FROM tasks").get() as { count: number };
+      
       res.json({ 
         status: "ok", 
         db: "connected", 
+        counts: {
+          tasks: tasksCount.count,
+          aspects: aspectsCount.count
+        },
         env: process.env.NODE_ENV,
-        cwd: process.cwd(),
-        distExists: fs.existsSync(path.join(process.cwd(), "dist")),
-        aspectsCount: aspectsCount.count
+        timestamp: new Date().toISOString()
       });
     } catch (err) {
       res.status(500).json({ status: "error", error: String(err) });
     }
   });
 
-  // API Routes
+  // --- Tasks API ---
   app.get("/api/tasks", (req, res) => {
     try {
       const tasks = db.prepare("SELECT * FROM tasks ORDER BY created_at DESC").all();
       const parsedTasks = tasks.map((t: any) => ({
         ...t,
+        completed: !!t.completed,
         attachments: t.attachments ? JSON.parse(t.attachments) : []
       }));
       res.json(parsedTasks);
     } catch (err) {
       console.error("GET /api/tasks error:", err);
-      res.status(500).json({ error: "Internal server error" });
+      res.status(500).json({ error: "Failed to fetch tasks" });
     }
   });
 
   app.post("/api/tasks", (req, res) => {
     try {
       const { id, title, description, quadrant, deadline, notes, attachments } = req.body;
-      const stmt = db.prepare(
-        "INSERT INTO tasks (id, title, description, quadrant, deadline, notes, attachments) VALUES (?, ?, ?, ?, ?, ?, ?)"
-      );
+      if (!id || !title) return res.status(400).json({ error: "ID and Title are required" });
+
+      const stmt = db.prepare(`
+        INSERT INTO tasks (id, title, description, quadrant, deadline, notes, attachments) 
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `);
+      
       stmt.run(
         id, 
         title, 
@@ -135,10 +193,10 @@ async function startServer() {
         notes || "", 
         attachments ? JSON.stringify(attachments) : "[]"
       );
-      res.status(201).json({ success: true });
+      res.status(201).json({ success: true, id });
     } catch (err) {
       console.error("POST /api/tasks error:", err);
-      res.status(500).json({ error: "Internal server error" });
+      res.status(500).json({ error: "Failed to create task" });
     }
   });
 
@@ -162,91 +220,78 @@ async function startServer() {
 
       params.push(id);
       const stmt = db.prepare(`UPDATE tasks SET ${updates.join(", ")} WHERE id = ?`);
-      stmt.run(...params);
+      const result = stmt.run(...params);
+      
+      if (result.changes === 0) return res.status(404).json({ error: "Task not found" });
+      
       res.json({ success: true });
     } catch (err) {
       console.error("PUT /api/tasks error:", err);
-      res.status(500).json({ error: "Internal server error" });
+      res.status(500).json({ error: "Failed to update task" });
     }
   });
 
   app.delete("/api/tasks/:id", (req, res) => {
     try {
       const { id } = req.params;
-      db.prepare("DELETE FROM tasks WHERE id = ?").run(id);
+      const result = db.prepare("DELETE FROM tasks WHERE id = ?").run(id);
+      if (result.changes === 0) return res.status(404).json({ error: "Task not found" });
       res.json({ success: true });
     } catch (err) {
       console.error("DELETE /api/tasks error:", err);
-      res.status(500).json({ error: "Internal server error" });
+      res.status(500).json({ error: "Failed to delete task" });
     }
   });
 
-  // Project Aspects API
+  // --- Project Aspects API ---
   app.get("/api/aspects", (req, res) => {
     try {
-      console.log("GET /api/aspects requested");
       let aspects = db.prepare("SELECT * FROM project_aspects ORDER BY name ASC").all();
       
       // Auto-seed if empty
       if (aspects.length === 0) {
         console.log("GET /api/aspects: Table empty, auto-seeding...");
-        const initialAspects = [
-          { id: '1', name: 'Strategy', progress: 45, health: 'green', next_milestone: 'Q2 Roadmap Review' },
-          { id: '2', name: 'Design', progress: 70, health: 'yellow', next_milestone: 'High-Fidelity Prototypes' },
-          { id: '3', name: 'Development', progress: 30, health: 'green', next_milestone: 'Alpha Release' },
-          { id: '4', name: 'Marketing', progress: 15, health: 'red', next_milestone: 'Brand Identity Launch' }
-        ];
-        const insertAspect = db.prepare("INSERT OR REPLACE INTO project_aspects (id, name, progress, health, next_milestone) VALUES (?, ?, ?, ?, ?)");
-        db.transaction(() => {
-          initialAspects.forEach(a => insertAspect.run(a.id, a.name, a.progress, a.health, a.next_milestone));
-        })();
+        seedAspects();
         aspects = db.prepare("SELECT * FROM project_aspects ORDER BY name ASC").all();
       }
       
-      console.log(`GET /api/aspects: Returning ${aspects.length} aspects`);
       res.json(aspects);
     } catch (err) {
       console.error("GET /api/aspects error:", err);
-      res.status(500).json({ error: String(err) });
+      res.status(500).json({ error: "Failed to fetch project aspects" });
     }
   });
 
   app.post("/api/aspects", (req, res) => {
     try {
       const { id, name, progress, health, next_milestone } = req.body;
-      const stmt = db.prepare(
-        "INSERT INTO project_aspects (id, name, progress, health, next_milestone) VALUES (?, ?, ?, ?, ?)"
-      );
+      if (!id || !name) return res.status(400).json({ error: "ID and Name are required" });
+
+      const stmt = db.prepare(`
+        INSERT INTO project_aspects (id, name, progress, health, next_milestone) 
+        VALUES (?, ?, ?, ?, ?)
+      `);
       stmt.run(id, name, progress || 0, health || 'green', next_milestone || '');
-      res.status(201).json({ success: true });
+      res.status(201).json({ success: true, id });
     } catch (err) {
       console.error("POST /api/aspects error:", err);
-      res.status(500).json({ error: "Internal server error" });
+      res.status(500).json({ error: "Failed to create project aspect" });
     }
   });
 
   app.post("/api/aspects/reset", (req, res) => {
     try {
-      console.log("POST /api/aspects/reset requested");
-      db.prepare("DELETE FROM project_aspects").run();
-      console.log("Table project_aspects cleared");
-      
-      const initialAspects = [
-        { id: '1', name: 'Strategy', progress: 45, health: 'green', next_milestone: 'Q2 Roadmap Review' },
-        { id: '2', name: 'Design', progress: 70, health: 'yellow', next_milestone: 'High-Fidelity Prototypes' },
-        { id: '3', name: 'Development', progress: 30, health: 'green', next_milestone: 'Alpha Release' },
-        { id: '4', name: 'Marketing', progress: 15, health: 'red', next_milestone: 'Brand Identity Launch' }
-      ];
-      const insertAspect = db.prepare("INSERT INTO project_aspects (id, name, progress, health, next_milestone) VALUES (?, ?, ?, ?, ?)");
+      console.log("Resetting project aspects...");
       db.transaction(() => {
-        initialAspects.forEach(a => insertAspect.run(a.id, a.name, a.progress, a.health, a.next_milestone));
+        db.prepare("DELETE FROM project_aspects").run();
+        seedAspects();
       })();
       
-      console.log("Database reset and re-seeded successfully");
-      res.json({ success: true, message: "Database reset complete" });
+      const aspects = db.prepare("SELECT * FROM project_aspects ORDER BY name ASC").all();
+      res.json({ success: true, message: "Database reset complete", aspects });
     } catch (err) {
       console.error("POST /api/aspects/reset error:", err);
-      res.status(500).json({ error: String(err) });
+      res.status(500).json({ error: "Failed to reset project aspects" });
     }
   });
 
@@ -267,29 +312,30 @@ async function startServer() {
         updates.push("updated_at = CURRENT_TIMESTAMP");
         params.push(id);
         const stmt = db.prepare(`UPDATE project_aspects SET ${updates.join(", ")} WHERE id = ?`);
-        stmt.run(...params);
+        const result = stmt.run(...params);
+        if (result.changes === 0) return res.status(404).json({ error: "Aspect not found" });
       }
       
       res.json({ success: true });
     } catch (err) {
       console.error("PUT /api/aspects error:", err);
-      res.status(500).json({ error: "Internal server error" });
+      res.status(500).json({ error: "Failed to update project aspect" });
     }
   });
 
   app.delete("/api/aspects/:id", (req, res) => {
     try {
       const { id } = req.params;
-      const stmt = db.prepare("DELETE FROM project_aspects WHERE id = ?");
-      stmt.run(id);
+      const result = db.prepare("DELETE FROM project_aspects WHERE id = ?").run(id);
+      if (result.changes === 0) return res.status(404).json({ error: "Aspect not found" });
       res.json({ success: true });
     } catch (err) {
       console.error("DELETE /api/aspects error:", err);
-      res.status(500).json({ error: "Internal server error" });
+      res.status(500).json({ error: "Failed to delete project aspect" });
     }
   });
 
-  // Vite middleware for development
+  // --- Vite / Static Files ---
   if (process.env.NODE_ENV !== "production") {
     console.log("Running in development mode with Vite middleware");
     const { createServer: createViteServer } = await import("vite");
@@ -322,3 +368,4 @@ async function startServer() {
 startServer().catch(err => {
   console.error("Failed to start server:", err);
 });
+

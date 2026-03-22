@@ -114,36 +114,48 @@ export default function App() {
       if (!response.ok) {
         const errorText = await response.text();
         console.error("App: Failed to fetch aspects. Status:", response.status, "Error:", errorText);
-        throw new Error("Failed to fetch aspects");
+        throw new Error(`Failed to fetch aspects: ${response.status}`);
       }
       const data = await response.json();
       console.log("App: Aspects data received:", data);
       if (Array.isArray(data)) {
         setAspects(data);
+        console.log(`App: Successfully set ${data.length} aspects`);
       } else {
         console.error("App: Aspects data is not an array:", data);
+        setAspects([]);
       }
     } catch (error) {
       console.error("App: Error in fetchAspects:", error);
+      // Don't clear aspects on error, keep what we have or empty array
     } finally {
       setIsAspectsLoading(false);
     }
   };
 
   const handleUpdateAspect = async (id: string, updates: Partial<ProjectAspect>) => {
+    console.log(`App: Updating aspect ${id}`, updates);
+    // Optimistic update
     setAspects((prev) => prev.map((a) => (a.id === id ? { ...a, ...updates } : a)));
     setHasUnsavedChanges(true);
 
     try {
-      await fetch(`/api/aspects/${id}`, {
+      const response = await fetch(`/api/aspects/${id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(updates),
       });
+      
+      if (!response.ok) {
+        throw new Error(`Update failed: ${response.status}`);
+      }
+      
       setHasUnsavedChanges(false);
       setLastSynced(new Date());
     } catch (error) {
-      console.error("Failed to update aspect:", error);
+      console.error("App: Failed to update aspect:", error);
+      // Re-fetch to sync with server state
+      fetchAspects();
     }
   };
 
@@ -164,13 +176,19 @@ export default function App() {
       console.log("App: Reset result:", result);
 
       if (response.ok) {
-        console.log("App: Reset successful, triggering fetchAspects...");
-        await fetchAspects();
+        console.log("App: Reset successful, aspects returned:", result.aspects?.length);
+        if (result.aspects && Array.isArray(result.aspects)) {
+          setAspects(result.aspects);
+        } else {
+          await fetchAspects();
+        }
       } else {
         console.error("App: Reset failed on server:", result.error || "Unknown error");
+        alert("Failed to initialize Nerve Center. Please check server logs.");
       }
     } catch (error) {
       console.error("App: Network or unexpected error during initialization:", error);
+      alert("Network error while initializing Nerve Center.");
     } finally {
       console.log("App: handleInitializeAspects completed");
       setIsInitializingAspects(false);
@@ -218,14 +236,13 @@ export default function App() {
 
   const handleSync = async () => {
     setIsSyncing(true);
+    console.log("App: Starting full sync...");
     try {
-      // For simplicity, we'll push all tasks to the server.
-      // In a real app, we'd only push changes.
-      // But since we have a per-task API, we'll just re-fetch to see if we're in sync
-      // or implement a bulk update if needed.
-      // For now, let's just re-fetch and assume the user wants to ensure server matches local.
-      // Actually, let's just re-fetch to verify connection and update lastSynced.
-      await fetchTasks();
+      await Promise.all([
+        fetchTasks(),
+        fetchAspects()
+      ]);
+      console.log("App: Full sync complete");
     } catch (error) {
       console.error("Sync failed:", error);
     } finally {
