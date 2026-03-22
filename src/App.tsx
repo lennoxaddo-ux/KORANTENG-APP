@@ -34,6 +34,7 @@ export default function App() {
   const [isDetailOpen, setIsDetailOpen] = useState(false);
   const [view, setView] = useState<ViewType>("all");
   const [isLoading, setIsLoading] = useState(true);
+  const [isAspectsLoading, setIsAspectsLoading] = useState(true);
   const [isSyncing, setIsSyncing] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [lastSynced, setLastSynced] = useState<Date | null>(null);
@@ -71,6 +72,7 @@ export default function App() {
   const fetchTasks = async () => {
     try {
       const response = await fetch("/api/tasks");
+      if (!response.ok) throw new Error("Failed to fetch tasks");
       const data = await response.json();
       const serverTasks = data.map((t: any) => ({ ...t, completed: !!t.completed }));
       setTasks(serverTasks);
@@ -84,12 +86,16 @@ export default function App() {
   };
 
   const fetchAspects = async () => {
+    setIsAspectsLoading(true);
     try {
       const response = await fetch("/api/aspects");
+      if (!response.ok) throw new Error("Failed to fetch aspects");
       const data = await response.json();
       setAspects(data);
     } catch (error) {
       console.error("Failed to fetch aspects:", error);
+    } finally {
+      setIsAspectsLoading(false);
     }
   };
 
@@ -301,7 +307,7 @@ export default function App() {
   const matrixTasks = filteredTasks.filter(t => t.quadrant !== QuadrantType.BACKLOG);
   const hiddenTasksCount = tasks.filter(t => t.quadrant !== QuadrantType.BACKLOG).length - matrixTasks.length;
 
-  if (isLoading) {
+  if (isLoading || (view === "nerve-center" && isAspectsLoading)) {
     return (
       <div className="flex h-screen items-center justify-center bg-stone-50">
         <div className="flex flex-col items-center gap-4">

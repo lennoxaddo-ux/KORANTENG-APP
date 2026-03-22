@@ -46,6 +46,24 @@ export function ProjectNerveCenter({ aspects, onUpdateAspect }: ProjectNerveCent
     }
   };
 
+  const avgProgress = aspects.length > 0 
+    ? Math.round(aspects.reduce((acc, a) => acc + a.progress, 0) / aspects.length) 
+    : 0;
+
+  if (aspects.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center rounded-[2.5rem] border-2 border-dashed border-stone-200 bg-stone-50/50 p-12 text-center">
+        <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-white shadow-sm">
+          <Activity className="h-8 w-8 text-stone-300" />
+        </div>
+        <h3 className="text-lg font-black text-stone-900">No workstreams found</h3>
+        <p className="max-w-xs text-sm font-bold text-stone-500">
+          The Nerve Center is currently offline. Please ensure your project aspects are correctly initialized in the database.
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-8">
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
@@ -210,7 +228,7 @@ export function ProjectNerveCenter({ aspects, onUpdateAspect }: ProjectNerveCent
             <div className="text-center">
               <p className="text-[10px] font-black uppercase tracking-[0.2em] text-stone-500 mb-1">Avg Progress</p>
               <p className="text-3xl font-black">
-                {Math.round(aspects.reduce((acc, a) => acc + a.progress, 0) / aspects.length)}%
+                {avgProgress}%
               </p>
             </div>
             <div className="text-center">
