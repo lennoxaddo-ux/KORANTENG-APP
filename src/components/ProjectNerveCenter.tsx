@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { ProjectAspect, HealthStatus } from "../types";
-import { Activity, TrendingUp, AlertCircle, CheckCircle2, ChevronRight, Edit3, Save, X } from "lucide-react";
+import { Activity, TrendingUp, AlertCircle, CheckCircle2, ChevronRight, Edit3, Save, X, Loader2 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { cn } from "../utils";
 
@@ -10,9 +10,17 @@ interface ProjectNerveCenterProps {
   onInitialize?: () => void;
   onAddAspect?: (name: string) => void;
   onDeleteAspect?: (id: string) => void;
+  isInitializing?: boolean;
 }
 
-export function ProjectNerveCenter({ aspects, onUpdateAspect, onInitialize, onAddAspect, onDeleteAspect }: ProjectNerveCenterProps) {
+export function ProjectNerveCenter({ 
+  aspects, 
+  onUpdateAspect, 
+  onInitialize, 
+  onAddAspect, 
+  onDeleteAspect,
+  isInitializing = false
+}: ProjectNerveCenterProps) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValues, setEditValues] = useState<Partial<ProjectAspect>>({});
   const [isAdding, setIsAdding] = useState(false);
@@ -76,10 +84,15 @@ export function ProjectNerveCenter({ aspects, onUpdateAspect, onInitialize, onAd
         {onInitialize && (
           <button
             onClick={onInitialize}
-            className="flex items-center gap-2 rounded-xl bg-indigo-600 px-6 py-3 text-xs font-black uppercase tracking-widest text-white shadow-lg shadow-indigo-100 hover:bg-indigo-700 transition-all"
+            disabled={isInitializing}
+            className="flex items-center gap-2 rounded-xl bg-indigo-600 px-6 py-3 text-xs font-black uppercase tracking-widest text-white shadow-lg shadow-indigo-100 hover:bg-indigo-700 disabled:opacity-50 transition-all"
           >
-            <Activity className="h-4 w-4" />
-            Initialize Nerve Center
+            {isInitializing ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Activity className="h-4 w-4" />
+            )}
+            {isInitializing ? "Initializing..." : "Initialize Nerve Center"}
           </button>
         )}
       </div>

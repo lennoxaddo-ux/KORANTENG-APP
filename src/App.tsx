@@ -144,11 +144,17 @@ export default function App() {
   };
 
   const handleInitializeAspects = async () => {
+    console.log("App: Initializing aspects...");
     setIsSyncing(true);
     try {
       const response = await fetch("/api/aspects/seed", { method: "POST" });
+      console.log("App: Seed response status:", response.status);
       if (response.ok) {
+        console.log("App: Seeding successful, fetching aspects...");
         await fetchAspects();
+      } else {
+        const errorText = await response.text();
+        console.error("App: Seeding failed:", errorText);
       }
     } catch (error) {
       console.error("Failed to initialize aspects:", error);
@@ -480,13 +486,22 @@ export default function App() {
                 Live Monitoring
               </div>
             </div>
-            <ProjectNerveCenter 
-              aspects={aspects} 
-              onUpdateAspect={handleUpdateAspect}
-              onInitialize={handleInitializeAspects}
-              onAddAspect={handleAddAspect}
-              onDeleteAspect={handleDeleteAspect}
-            />
+            
+            {isAspectsLoading ? (
+              <div className="flex flex-col items-center justify-center rounded-[2.5rem] border-2 border-dashed border-stone-200 bg-stone-50/50 p-12 text-center">
+                <Loader2 className="h-8 w-8 text-indigo-500 animate-spin mb-4" />
+                <p className="text-sm font-bold text-stone-500">Syncing with Nerve Center...</p>
+              </div>
+            ) : (
+              <ProjectNerveCenter 
+                aspects={aspects} 
+                onUpdateAspect={handleUpdateAspect}
+                onInitialize={handleInitializeAspects}
+                onAddAspect={handleAddAspect}
+                onDeleteAspect={handleDeleteAspect}
+                isInitializing={isSyncing}
+              />
+            )}
           </div>
         ) : (
           <DndContext
