@@ -21,8 +21,30 @@ db.exec(`
     notes TEXT,
     attachments TEXT,
     created_at TEXT DEFAULT CURRENT_TIMESTAMP
-  )
+  );
+
+  CREATE TABLE IF NOT EXISTS project_aspects (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    progress INTEGER DEFAULT 0,
+    health TEXT DEFAULT 'green',
+    next_milestone TEXT,
+    updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+  );
 `);
+
+// Seed initial aspects if table is empty
+const aspectsCount = db.prepare("SELECT COUNT(*) as count FROM project_aspects").get() as { count: number };
+if (aspectsCount.count === 0) {
+  const initialAspects = [
+    { id: '1', name: 'Strategy', progress: 45, health: 'green', next_milestone: 'Q2 Roadmap Review' },
+    { id: '2', name: 'Design', progress: 70, health: 'yellow', next_milestone: 'High-Fidelity Prototypes' },
+    { id: '3', name: 'Development', progress: 30, health: 'green', next_milestone: 'Alpha Release' },
+    { id: '4', name: 'Marketing', progress: 15, health: 'red', next_milestone: 'Brand Identity Launch' }
+  ];
+  const insertAspect = db.prepare("INSERT INTO project_aspects (id, name, progress, health, next_milestone) VALUES (?, ?, ?, ?, ?)");
+  initialAspects.forEach(a => insertAspect.run(a.id, a.name, a.progress, a.health, a.next_milestone));
+}
 
 // Add columns if they don't exist (for existing databases)
 try { db.exec("ALTER TABLE tasks ADD COLUMN notes TEXT"); } catch (e) {}
@@ -88,6 +110,34 @@ async function startServer() {
   app.delete("/api/tasks/:id", (req, res) => {
     const { id } = req.params;
     db.prepare("DELETE FROM tasks WHERE id = ?").run(id);
+    res.json({ success: true });
+  });
+
+  // Project Aspects API
+  app.get("/api/aspects", (req, res) => {
+    const aspects = db.prepare("SELECT * FROM project_aspects ORDER BY name ASC").all();
+    res.json(aspects);
+  });
+
+  app.put("/api/aspects/:id", (req, res) => {
+    const { id } = req.params;
+    const { name, progress, health, next_milestone } = req.body;
+    
+    const updates: string[] = [];
+    const params: any[] = [];
+
+    if (name !== undefined) { updates.push("name = ?"); params.push(name); }
+    if (progress !== undefined) { updates.push("progress = ?"); params.push(progress); }
+    if (health !== undefined) { updates.push("health = ?"); params.push(health); }
+    if (next_milestone !== undefined) { updates.push("next_milestone = ?"); params.push(next_milestone); }
+
+    if (updates.length > 0) {
+      updates.push("updated_at = CURRENT_TIMESTAMP");
+      params.push(id);
+      const stmt = db.prepare(`UPDATE project_aspects SET ${updates.join(", ")} WHERE id = ?`);
+      stmt.run(...params);
+    }
+    
     res.json({ success: true });
   });
 

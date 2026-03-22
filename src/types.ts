@@ -18,4 +18,15 @@ export interface Task {
   attachments?: { name: string; url: string; type: string }[];
 }
 
-export type ViewType = "daily" | "weekly" | "all";
+export type ViewType = "daily" | "weekly" | "all" | "nerve-center";
+
+export type HealthStatus = "green" | "yellow" | "red";
+
+export interface ProjectAspect {
+  id: string;
+  name: string;
+  progress: number; // 0-100
+  health: HealthStatus;
+  next_milestone: string;
+  updated_at: string;
+}

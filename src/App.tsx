@@ -12,21 +12,23 @@ import {
   defaultDropAnimationSideEffects,
 } from "@dnd-kit/core";
 import { arrayMove } from "@dnd-kit/sortable";
-import { QuadrantType, Task, ViewType } from "./types";
 import { MasterList } from "./components/MasterList";
 import { MatrixGrid } from "./components/MatrixGrid";
 import { TaskForm } from "./components/TaskForm";
 import { TaskCard } from "./components/TaskCard";
 import { TaskDetailModal } from "./components/TaskDetailModal";
 import { SyncButton } from "./components/SyncButton";
+import { ProjectNerveCenter } from "./components/ProjectNerveCenter";
 import { CelebrationZone } from "./components/CelebrationZone";
-import { LayoutGrid, List, CalendarDays, Calendar as CalendarIcon, Loader2, Trophy } from "lucide-react";
+import { LayoutGrid, List, CalendarDays, Calendar as CalendarIcon, Loader2, Trophy, Activity } from "lucide-react";
 import { cn } from "./utils";
 import { motion, AnimatePresence } from "motion/react";
 import { isWithinInterval, startOfDay, endOfDay, startOfWeek, endOfWeek } from "date-fns";
+import { QuadrantType, Task, ViewType, ProjectAspect } from "./types";
 
 export default function App() {
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [aspects, setAspects] = useState<ProjectAspect[]>([]);
   const [activeTask, setActiveTask] = useState<Task | null>(null);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
@@ -57,6 +59,7 @@ export default function App() {
       setIsLoading(false);
     }
     fetchTasks();
+    fetchAspects();
   }, []);
 
   useEffect(() => {
@@ -77,6 +80,33 @@ export default function App() {
       console.error("Failed to fetch tasks:", error);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const fetchAspects = async () => {
+    try {
+      const response = await fetch("/api/aspects");
+      const data = await response.json();
+      setAspects(data);
+    } catch (error) {
+      console.error("Failed to fetch aspects:", error);
+    }
+  };
+
+  const handleUpdateAspect = async (id: string, updates: Partial<ProjectAspect>) => {
+    setAspects((prev) => prev.map((a) => (a.id === id ? { ...a, ...updates } : a)));
+    setHasUnsavedChanges(true);
+
+    try {
+      await fetch(`/api/aspects/${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(updates),
+      });
+      setHasUnsavedChanges(false);
+      setLastSynced(new Date());
+    } catch (error) {
+      console.error("Failed to update aspect:", error);
     }
   };
 
@@ -337,93 +367,118 @@ export default function App() {
             >
               Weekly
             </button>
+            <button
+              onClick={() => setView("nerve-center")}
+              className={cn(
+                "flex items-center gap-2 rounded-lg px-3 py-1.5 sm:px-4 sm:py-2 text-xs sm:text-sm font-bold transition-all",
+                view === "nerve-center" ? "bg-white text-indigo-600 shadow-sm" : "text-stone-500 hover:text-stone-700"
+              )}
+            >
+              Nerve Center
+            </button>
           </div>
           <div className="flex items-center justify-end">
             <TaskForm onAdd={handleAddTask} />
           </div>
         </div>
 
-        <DndContext
-          sensors={sensors}
-          onDragStart={handleDragStart}
-          onDragEnd={handleDragEnd}
-        >
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-            {/* Sidebar: Master List + Celebration Zone */}
-            <div className="lg:col-span-4 xl:col-span-3 space-y-8">
-              <MasterList
-                tasks={backlogTasks}
-                onToggleComplete={handleToggleComplete}
-                onDelete={handleDeleteTask}
-                onAdd={handleAddTask}
-                onTaskClick={handleTaskClick}
-              />
-              
-              <CelebrationZone tasks={tasks} />
+        {view === "nerve-center" ? (
+          <div className="space-y-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <h2 className="text-3xl font-black text-stone-900 tracking-tight">Project Nerve Center</h2>
+                <p className="text-sm font-bold text-stone-500">Real-time health and progress across all project workstreams.</p>
+              </div>
+              <div className="flex items-center gap-2 text-xs font-black text-stone-400 bg-white px-4 py-2 rounded-2xl border border-stone-100 shadow-sm self-start sm:self-auto uppercase tracking-widest">
+                <Activity className="h-4 w-4 text-indigo-500" />
+                Live Monitoring
+              </div>
             </div>
-
-            {/* Main Content: Matrix Grid */}
-            <div className="lg:col-span-8 xl:col-span-9">
-              <div className="mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                <div>
-                  <h2 className="text-xl font-bold text-stone-900">
-                    {view === "daily" ? "Today's Priorities" : view === "weekly" ? "Weekly Strategy" : "All Priorities"}
-                  </h2>
-                  <p className="text-sm text-stone-500">
-                    {view === "daily" 
-                      ? "Focus on what matters right now." 
-                      : view === "weekly"
-                      ? "Plan your week for maximum impact."
-                      : "View all your categorized tasks."}
-                  </p>
-                  {hiddenTasksCount > 0 && (
-                    <p className="text-[10px] font-bold text-indigo-500 mt-1 uppercase tracking-wider">
-                      + {hiddenTasksCount} tasks hidden by date filter
-                    </p>
-                  )}
-                </div>
-                <div className="flex items-center gap-2 text-xs font-medium text-stone-400 bg-white px-3 py-1.5 rounded-lg border border-stone-100 shadow-sm self-start sm:self-auto">
-                  <div className="h-2 w-2 rounded-full bg-emerald-500" />
-                  {tasks.filter(t => t.completed).length} Completed
-                </div>
+            <ProjectNerveCenter aspects={aspects} onUpdateAspect={handleUpdateAspect} />
+          </div>
+        ) : (
+          <DndContext
+            sensors={sensors}
+            onDragStart={handleDragStart}
+            onDragEnd={handleDragEnd}
+          >
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+              {/* Sidebar: Master List + Celebration Zone */}
+              <div className="lg:col-span-4 xl:col-span-3 space-y-8">
+                <MasterList
+                  tasks={backlogTasks}
+                  onToggleComplete={handleToggleComplete}
+                  onDelete={handleDeleteTask}
+                  onAdd={handleAddTask}
+                  onTaskClick={handleTaskClick}
+                />
+                
+                <CelebrationZone tasks={tasks} />
               </div>
 
-              <MatrixGrid
-                tasks={matrixTasks}
-                onToggleComplete={handleToggleComplete}
-                onDelete={handleDeleteTask}
-                onTaskClick={handleTaskClick}
-              />
+              {/* Main Content: Matrix Grid */}
+              <div className="lg:col-span-8 xl:col-span-9">
+                <div className="mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div>
+                    <h2 className="text-xl font-bold text-stone-900">
+                      {view === "daily" ? "Today's Priorities" : view === "weekly" ? "Weekly Strategy" : "All Priorities"}
+                    </h2>
+                    <p className="text-sm text-stone-500">
+                      {view === "daily" 
+                        ? "Focus on what matters right now." 
+                        : view === "weekly"
+                        ? "Plan your week for maximum impact."
+                        : "View all your categorized tasks."}
+                    </p>
+                    {hiddenTasksCount > 0 && (
+                      <p className="text-[10px] font-bold text-indigo-500 mt-1 uppercase tracking-wider">
+                        + {hiddenTasksCount} tasks hidden by date filter
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2 text-xs font-medium text-stone-400 bg-white px-3 py-1.5 rounded-lg border border-stone-100 shadow-sm self-start sm:self-auto">
+                    <div className="h-2 w-2 rounded-full bg-emerald-500" />
+                    {tasks.filter(t => t.completed).length} Completed
+                  </div>
+                </div>
+
+                <MatrixGrid
+                  tasks={matrixTasks}
+                  onToggleComplete={handleToggleComplete}
+                  onDelete={handleDeleteTask}
+                  onTaskClick={handleTaskClick}
+                />
+              </div>
             </div>
-          </div>
 
-          <TaskDetailModal
-            task={selectedTask}
-            isOpen={isDetailOpen}
-            onClose={() => setIsDetailOpen(false)}
-            onUpdate={handleUpdateTask}
-            onDelete={handleDeleteTask}
-            onToggleComplete={handleToggleComplete}
-          />
+            <TaskDetailModal
+              task={selectedTask}
+              isOpen={isDetailOpen}
+              onClose={() => setIsDetailOpen(false)}
+              onUpdate={handleUpdateTask}
+              onDelete={handleDeleteTask}
+              onToggleComplete={handleToggleComplete}
+            />
 
-          <DragOverlay dropAnimation={{
-            sideEffects: defaultDropAnimationSideEffects({
-              styles: {
-                active: {
-                  opacity: "0.5",
+            <DragOverlay dropAnimation={{
+              sideEffects: defaultDropAnimationSideEffects({
+                styles: {
+                  active: {
+                    opacity: "0.5",
+                  },
                 },
-              },
-            }),
-          }}>
-            {activeTask ? (
-              <TaskCard
-                task={activeTask}
-                onToggleComplete={() => {}}
-                onDelete={() => {}}
-              />
-            ) : null}
-          </DragOverlay>
-        </DndContext>
+              }),
+            }}>
+              {activeTask ? (
+                <TaskCard
+                  task={activeTask}
+                  onToggleComplete={() => {}}
+                  onDelete={() => {}}
+                />
+              ) : null}
+            </DragOverlay>
+          </DndContext>
+        )}
       </main>
 
       <footer className="mt-auto border-t border-stone-200 bg-white py-8">
