@@ -143,6 +143,59 @@ export default function App() {
     }
   };
 
+  const handleInitializeAspects = async () => {
+    setIsSyncing(true);
+    try {
+      const response = await fetch("/api/aspects/seed", { method: "POST" });
+      if (response.ok) {
+        await fetchAspects();
+      }
+    } catch (error) {
+      console.error("Failed to initialize aspects:", error);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  const handleAddAspect = async (name: string) => {
+    const newAspect: ProjectAspect = {
+      id: Math.random().toString(36).substr(2, 9),
+      name,
+      progress: 0,
+      health: "green",
+      next_milestone: "Initial Setup",
+      updated_at: new Date().toISOString()
+    };
+
+    try {
+      const response = await fetch("/api/aspects", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(newAspect)
+      });
+      if (response.ok) {
+        await fetchAspects();
+      }
+    } catch (error) {
+      console.error("Failed to add aspect:", error);
+    }
+  };
+
+  const handleDeleteAspect = async (id: string) => {
+    setAspects((prev) => prev.filter((a) => a.id !== id));
+    setHasUnsavedChanges(true);
+
+    try {
+      await fetch(`/api/aspects/${id}`, {
+        method: "DELETE",
+      });
+      setHasUnsavedChanges(false);
+      setLastSynced(new Date());
+    } catch (error) {
+      console.error("Failed to delete aspect:", error);
+    }
+  };
+
   const handleSync = async () => {
     setIsSyncing(true);
     try {
@@ -427,7 +480,13 @@ export default function App() {
                 Live Monitoring
               </div>
             </div>
-            <ProjectNerveCenter aspects={aspects} onUpdateAspect={handleUpdateAspect} />
+            <ProjectNerveCenter 
+              aspects={aspects} 
+              onUpdateAspect={handleUpdateAspect}
+              onInitialize={handleInitializeAspects}
+              onAddAspect={handleAddAspect}
+              onDeleteAspect={handleDeleteAspect}
+            />
           </div>
         ) : (
           <DndContext

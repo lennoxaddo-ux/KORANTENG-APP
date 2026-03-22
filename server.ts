@@ -171,11 +171,57 @@ async function startServer() {
   app.get("/api/aspects", (req, res) => {
     try {
       console.log("GET /api/aspects requested");
-      const aspects = db.prepare("SELECT * FROM project_aspects ORDER BY name ASC").all();
+      let aspects = db.prepare("SELECT * FROM project_aspects ORDER BY name ASC").all();
+      
+      // Auto-seed if empty
+      if (aspects.length === 0) {
+        console.log("GET /api/aspects: Table empty, auto-seeding...");
+        const initialAspects = [
+          { id: '1', name: 'Strategy', progress: 45, health: 'green', next_milestone: 'Q2 Roadmap Review' },
+          { id: '2', name: 'Design', progress: 70, health: 'yellow', next_milestone: 'High-Fidelity Prototypes' },
+          { id: '3', name: 'Development', progress: 30, health: 'green', next_milestone: 'Alpha Release' },
+          { id: '4', name: 'Marketing', progress: 15, health: 'red', next_milestone: 'Brand Identity Launch' }
+        ];
+        const insertAspect = db.prepare("INSERT INTO project_aspects (id, name, progress, health, next_milestone) VALUES (?, ?, ?, ?, ?)");
+        initialAspects.forEach(a => insertAspect.run(a.id, a.name, a.progress, a.health, a.next_milestone));
+        aspects = db.prepare("SELECT * FROM project_aspects ORDER BY name ASC").all();
+      }
+      
       console.log(`Found ${aspects.length} aspects`);
       res.json(aspects);
     } catch (err) {
       console.error("GET /api/aspects error:", err);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  app.post("/api/aspects", (req, res) => {
+    try {
+      const { id, name, progress, health, next_milestone } = req.body;
+      const stmt = db.prepare(
+        "INSERT INTO project_aspects (id, name, progress, health, next_milestone) VALUES (?, ?, ?, ?, ?)"
+      );
+      stmt.run(id, name, progress || 0, health || 'green', next_milestone || '');
+      res.status(201).json({ success: true });
+    } catch (err) {
+      console.error("POST /api/aspects error:", err);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  app.post("/api/aspects/seed", (req, res) => {
+    try {
+      const initialAspects = [
+        { id: '1', name: 'Strategy', progress: 45, health: 'green', next_milestone: 'Q2 Roadmap Review' },
+        { id: '2', name: 'Design', progress: 70, health: 'yellow', next_milestone: 'High-Fidelity Prototypes' },
+        { id: '3', name: 'Development', progress: 30, health: 'green', next_milestone: 'Alpha Release' },
+        { id: '4', name: 'Marketing', progress: 15, health: 'red', next_milestone: 'Brand Identity Launch' }
+      ];
+      const insertAspect = db.prepare("INSERT OR IGNORE INTO project_aspects (id, name, progress, health, next_milestone) VALUES (?, ?, ?, ?, ?)");
+      initialAspects.forEach(a => insertAspect.run(a.id, a.name, a.progress, a.health, a.next_milestone));
+      res.json({ success: true });
+    } catch (err) {
+      console.error("POST /api/aspects/seed error:", err);
       res.status(500).json({ error: "Internal server error" });
     }
   });
@@ -203,6 +249,18 @@ async function startServer() {
       res.json({ success: true });
     } catch (err) {
       console.error("PUT /api/aspects error:", err);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  app.delete("/api/aspects/:id", (req, res) => {
+    try {
+      const { id } = req.params;
+      const stmt = db.prepare("DELETE FROM project_aspects WHERE id = ?");
+      stmt.run(id);
+      res.json({ success: true });
+    } catch (err) {
+      console.error("DELETE /api/aspects error:", err);
       res.status(500).json({ error: "Internal server error" });
     }
   });

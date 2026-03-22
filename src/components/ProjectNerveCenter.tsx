@@ -7,11 +7,24 @@ import { cn } from "../utils";
 interface ProjectNerveCenterProps {
   aspects: ProjectAspect[];
   onUpdateAspect: (id: string, updates: Partial<ProjectAspect>) => void;
+  onInitialize?: () => void;
+  onAddAspect?: (name: string) => void;
+  onDeleteAspect?: (id: string) => void;
 }
 
-export function ProjectNerveCenter({ aspects, onUpdateAspect }: ProjectNerveCenterProps) {
+export function ProjectNerveCenter({ aspects, onUpdateAspect, onInitialize, onAddAspect, onDeleteAspect }: ProjectNerveCenterProps) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValues, setEditValues] = useState<Partial<ProjectAspect>>({});
+  const [isAdding, setIsAdding] = useState(false);
+  const [newName, setNewName] = useState("");
+
+  const handleAdd = () => {
+    if (newName.trim() && onAddAspect) {
+      onAddAspect(newName.trim());
+      setNewName("");
+      setIsAdding(false);
+    }
+  };
 
   const handleStartEdit = (aspect: ProjectAspect) => {
     setEditingId(aspect.id);
@@ -57,15 +70,78 @@ export function ProjectNerveCenter({ aspects, onUpdateAspect }: ProjectNerveCent
           <Activity className="h-8 w-8 text-stone-300" />
         </div>
         <h3 className="text-lg font-black text-stone-900">No workstreams found</h3>
-        <p className="max-w-xs text-sm font-bold text-stone-500">
+        <p className="max-w-xs text-sm font-bold text-stone-500 mb-6">
           The Nerve Center is currently offline. Please ensure your project aspects are correctly initialized in the database.
         </p>
+        {onInitialize && (
+          <button
+            onClick={onInitialize}
+            className="flex items-center gap-2 rounded-xl bg-indigo-600 px-6 py-3 text-xs font-black uppercase tracking-widest text-white shadow-lg shadow-indigo-100 hover:bg-indigo-700 transition-all"
+          >
+            <Activity className="h-4 w-4" />
+            Initialize Nerve Center
+          </button>
+        )}
       </div>
     );
   }
 
   return (
     <div className="space-y-8">
+      <div className="flex items-center justify-between">
+        <h2 className="text-2xl font-black text-stone-900 tracking-tight">Active Workstreams</h2>
+        {onAddAspect && (
+          <button
+            onClick={() => setIsAdding(true)}
+            className="flex items-center gap-2 rounded-xl bg-stone-900 px-4 py-2 text-xs font-black uppercase tracking-widest text-white hover:bg-stone-800 transition-all"
+          >
+            <Activity className="h-4 w-4" />
+            Add Workstream
+          </button>
+        )}
+      </div>
+
+      <AnimatePresence>
+        {isAdding && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: "auto" }}
+            exit={{ opacity: 0, height: 0 }}
+            className="overflow-hidden"
+          >
+            <div className="rounded-[2rem] border-2 border-indigo-100 bg-indigo-50/30 p-6 mb-6">
+              <div className="flex flex-col sm:flex-row items-end gap-4">
+                <div className="flex-1 space-y-2">
+                  <label className="text-[10px] font-black uppercase tracking-widest text-indigo-400">Workstream Name</label>
+                  <input
+                    type="text"
+                    value={newName}
+                    onChange={(e) => setNewName(e.target.value)}
+                    placeholder="e.g. Infrastructure, QA, Legal..."
+                    className="w-full rounded-xl border-none bg-white p-3 text-sm font-bold shadow-sm focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setIsAdding(false)}
+                    className="rounded-xl bg-white p-3 text-stone-400 hover:text-stone-600 shadow-sm transition-all"
+                  >
+                    <X className="h-5 w-5" />
+                  </button>
+                  <button
+                    onClick={handleAdd}
+                    disabled={!newName.trim()}
+                    className="rounded-xl bg-indigo-600 px-6 py-3 text-xs font-black uppercase tracking-widest text-white shadow-lg shadow-indigo-100 hover:bg-indigo-700 disabled:opacity-50 transition-all"
+                  >
+                    Create
+                  </button>
+                </div>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
         {aspects.map((aspect) => (
           <motion.div
@@ -87,12 +163,26 @@ export function ProjectNerveCenter({ aspects, onUpdateAspect }: ProjectNerveCent
                 </div>
               </div>
               {editingId !== aspect.id && (
-                <button
-                  onClick={() => handleStartEdit(aspect)}
-                  className="rounded-full p-2 text-stone-300 hover:bg-stone-50 hover:text-stone-600 transition-all"
-                >
-                  <Edit3 className="h-4 w-4" />
-                </button>
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => handleStartEdit(aspect)}
+                    className="rounded-full p-2 text-stone-300 hover:bg-stone-50 hover:text-stone-600 transition-all"
+                  >
+                    <Edit3 className="h-4 w-4" />
+                  </button>
+                  {onDeleteAspect && (
+                    <button
+                      onClick={() => {
+                        if (window.confirm(`Are you sure you want to delete ${aspect.name}?`)) {
+                          onDeleteAspect(aspect.id);
+                        }
+                      }}
+                      className="rounded-full p-2 text-stone-300 hover:bg-rose-50 hover:text-rose-600 transition-all"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  )}
+                </div>
               )}
             </div>
 
