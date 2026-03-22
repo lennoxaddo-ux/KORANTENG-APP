@@ -26,6 +26,13 @@ import { motion, AnimatePresence } from "motion/react";
 import { isWithinInterval, startOfDay, endOfDay, startOfWeek, endOfWeek } from "date-fns";
 import { QuadrantType, Task, ViewType, ProjectAspect } from "./types";
 
+const INITIAL_ASPECTS: ProjectAspect[] = [
+  { id: '1', name: 'Strategy', progress: 45, health: 'green', next_milestone: 'Q2 Roadmap Review', updated_at: new Date().toISOString() },
+  { id: '2', name: 'Design', progress: 70, health: 'yellow', next_milestone: 'High-Fidelity Prototypes', updated_at: new Date().toISOString() },
+  { id: '3', name: 'Development', progress: 30, health: 'green', next_milestone: 'Alpha Release', updated_at: new Date().toISOString() },
+  { id: '4', name: 'Marketing', progress: 15, health: 'red', next_milestone: 'Brand Identity Launch', updated_at: new Date().toISOString() }
+];
+
 export default function App() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [aspects, setAspects] = useState<ProjectAspect[]>([]);
@@ -55,6 +62,8 @@ export default function App() {
 
   useEffect(() => {
     console.log("App: Initializing...");
+    
+    // Load tasks from localStorage
     const localTasks = localStorage.getItem("koranteng_tasks");
     if (localTasks) {
       try {
@@ -64,6 +73,21 @@ export default function App() {
         console.error("App: Failed to parse local tasks", e);
       }
     }
+
+    // Load aspects from localStorage
+    const localAspects = localStorage.getItem("koranteng_aspects");
+    if (localAspects) {
+      try {
+        const parsed = JSON.parse(localAspects);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setAspects(parsed);
+          setIsAspectsLoading(false);
+        }
+      } catch (e) {
+        console.error("App: Failed to parse local aspects", e);
+      }
+    }
+
     fetchTasks();
     fetchAspects();
   }, []);
@@ -73,6 +97,12 @@ export default function App() {
       localStorage.setItem("koranteng_tasks", JSON.stringify(tasks));
     }
   }, [tasks, isLoading]);
+
+  useEffect(() => {
+    if (!isAspectsLoading) {
+      localStorage.setItem("koranteng_aspects", JSON.stringify(aspects));
+    }
+  }, [aspects, isAspectsLoading]);
 
   useEffect(() => {
     console.log("App: Aspects state changed:", aspects.length, aspects);
@@ -88,6 +118,11 @@ export default function App() {
         console.error("App: Failed to fetch tasks. Status:", response.status, "Error:", errorText);
         throw new Error("Failed to fetch tasks");
       }
+      const contentType = response.headers.get("content-type");
+      if (!contentType || !contentType.includes("application/json")) {
+        throw new Error("Server did not return JSON");
+      }
+
       const data = await response.json();
       console.log("App: Tasks data received:", data);
       if (Array.isArray(data)) {
@@ -111,11 +146,16 @@ export default function App() {
     try {
       const response = await fetch("/api/aspects");
       console.log("App: Aspects response status:", response.status);
+      
       if (!response.ok) {
-        const errorText = await response.text();
-        console.error("App: Failed to fetch aspects. Status:", response.status, "Error:", errorText);
-        throw new Error(`Failed to fetch aspects: ${response.status}`);
+        throw new Error(`Server returned ${response.status}`);
       }
+
+      const contentType = response.headers.get("content-type");
+      if (!contentType || !contentType.includes("application/json")) {
+        throw new Error("Server did not return JSON");
+      }
+
       const data = await response.json();
       console.log("App: Aspects data received:", data);
       if (Array.isArray(data)) {
@@ -123,11 +163,21 @@ export default function App() {
         console.log(`App: Successfully set ${data.length} aspects`);
       } else {
         console.error("App: Aspects data is not an array:", data);
-        setAspects([]);
       }
     } catch (error) {
       console.error("App: Error in fetchAspects:", error);
-      // Don't clear aspects on error, keep what we have or empty array
+      // Fallback to local data if available, or initialize with defaults if empty
+      const localAspects = localStorage.getItem("koranteng_aspects");
+      if (localAspects) {
+        try {
+          const parsed = JSON.parse(localAspects);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setAspects(parsed);
+          }
+        } catch (e) {
+          console.error("App: Failed to parse local aspects during fallback", e);
+        }
+      }
     } finally {
       setIsAspectsLoading(false);
     }
@@ -136,7 +186,9 @@ export default function App() {
   const handleUpdateAspect = async (id: string, updates: Partial<ProjectAspect>) => {
     console.log(`App: Updating aspect ${id}`, updates);
     // Optimistic update
-    setAspects((prev) => prev.map((a) => (a.id === id ? { ...a, ...updates } : a)));
+    const updatedAspects = aspects.map((a) => (a.id === id ? { ...a, ...updates } : a));
+    setAspects(updatedAspects);
+    localStorage.setItem("koranteng_aspects", JSON.stringify(updatedAspects));
     setHasUnsavedChanges(true);
 
     try {
@@ -153,9 +205,9 @@ export default function App() {
       setHasUnsavedChanges(false);
       setLastSynced(new Date());
     } catch (error) {
-      console.error("App: Failed to update aspect:", error);
-      // Re-fetch to sync with server state
-      fetchAspects();
+      console.error("App: Failed to update aspect on server:", error);
+      // We keep the local change but mark as unsaved
+      setHasUnsavedChanges(true);
     }
   };
 
@@ -168,27 +220,38 @@ export default function App() {
       console.log("App: Sending POST /api/aspects/reset...");
       const response = await fetch("/api/aspects/reset", { 
         method: "POST",
-        headers: { 'Content-Type': 'application/json' }
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({})
       });
       
       console.log("App: Reset response status:", response.status);
-      const result = await response.json();
-      console.log("App: Reset result:", result);
-
+      
       if (response.ok) {
-        console.log("App: Reset successful, aspects returned:", result.aspects?.length);
-        if (result.aspects && Array.isArray(result.aspects)) {
-          setAspects(result.aspects);
-        } else {
-          await fetchAspects();
+        const contentType = response.headers.get("content-type");
+        if (contentType && contentType.includes("application/json")) {
+          const result = await response.json();
+          console.log("App: Reset successful, aspects returned:", result.aspects?.length);
+          if (result.aspects && Array.isArray(result.aspects)) {
+            setAspects(result.aspects);
+            return;
+          }
         }
+        // If ok but no JSON or invalid data, fetch manually
+        await fetchAspects();
       } else {
-        console.error("App: Reset failed on server:", result.error || "Unknown error");
-        alert("Failed to initialize Nerve Center. Please check server logs.");
+        console.error("App: Reset failed on server with status:", response.status);
+        throw new Error("Server reset failed");
       }
     } catch (error) {
       console.error("App: Network or unexpected error during initialization:", error);
-      alert("Network error while initializing Nerve Center.");
+      console.log("App: Falling back to local initialization...");
+      
+      // Local fallback initialization
+      setAspects(INITIAL_ASPECTS);
+      localStorage.setItem("koranteng_aspects", JSON.stringify(INITIAL_ASPECTS));
+      
+      // Inform user but allow them to proceed
+      console.warn("Nerve Center initialized locally. Server sync unavailable.");
     } finally {
       console.log("App: handleInitializeAspects completed");
       setIsInitializingAspects(false);
@@ -205,6 +268,11 @@ export default function App() {
       updated_at: new Date().toISOString()
     };
 
+    const updatedAspects = [...aspects, newAspect];
+    setAspects(updatedAspects);
+    localStorage.setItem("koranteng_aspects", JSON.stringify(updatedAspects));
+    setHasUnsavedChanges(true);
+
     try {
       const response = await fetch("/api/aspects", {
         method: "POST",
@@ -212,25 +280,36 @@ export default function App() {
         body: JSON.stringify(newAspect)
       });
       if (response.ok) {
-        await fetchAspects();
+        setHasUnsavedChanges(false);
+        setLastSynced(new Date());
+      } else {
+        throw new Error("Failed to save to server");
       }
     } catch (error) {
-      console.error("Failed to add aspect:", error);
+      console.error("Failed to add aspect to server:", error);
+      setHasUnsavedChanges(true);
     }
   };
 
   const handleDeleteAspect = async (id: string) => {
-    setAspects((prev) => prev.filter((a) => a.id !== id));
+    const updatedAspects = aspects.filter((a) => a.id !== id);
+    setAspects(updatedAspects);
+    localStorage.setItem("koranteng_aspects", JSON.stringify(updatedAspects));
     setHasUnsavedChanges(true);
 
     try {
-      await fetch(`/api/aspects/${id}`, {
+      const response = await fetch(`/api/aspects/${id}`, {
         method: "DELETE",
       });
-      setHasUnsavedChanges(false);
-      setLastSynced(new Date());
+      if (response.ok) {
+        setHasUnsavedChanges(false);
+        setLastSynced(new Date());
+      } else {
+        throw new Error("Failed to delete from server");
+      }
     } catch (error) {
-      console.error("Failed to delete aspect:", error);
+      console.error("Failed to delete aspect from server:", error);
+      setHasUnsavedChanges(true);
     }
   };
 
