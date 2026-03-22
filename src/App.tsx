@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, Component } from "react";
 import {
   DndContext,
   DragEndEvent,
@@ -32,7 +32,7 @@ export default function App() {
   const [activeTask, setActiveTask] = useState<Task | null>(null);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
-  const [view, setView] = useState<ViewType>("all");
+  const [view, setView] = useState<ViewType>("nerve-center");
   const [isLoading, setIsLoading] = useState(true);
   const [isAspectsLoading, setIsAspectsLoading] = useState(true);
   const [isSyncing, setIsSyncing] = useState(false);
@@ -54,10 +54,15 @@ export default function App() {
   );
 
   useEffect(() => {
+    console.log("App: Initializing...");
     const localTasks = localStorage.getItem("koranteng_tasks");
     if (localTasks) {
-      setTasks(JSON.parse(localTasks));
-      setIsLoading(false);
+      try {
+        setTasks(JSON.parse(localTasks));
+        setIsLoading(false);
+      } catch (e) {
+        console.error("App: Failed to parse local tasks", e);
+      }
     }
     fetchTasks();
     fetchAspects();
@@ -70,16 +75,27 @@ export default function App() {
   }, [tasks, isLoading]);
 
   const fetchTasks = async () => {
+    console.log("App: Fetching tasks...");
     try {
       const response = await fetch("/api/tasks");
-      if (!response.ok) throw new Error("Failed to fetch tasks");
+      console.log("App: Tasks response status:", response.status);
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error("App: Failed to fetch tasks. Status:", response.status, "Error:", errorText);
+        throw new Error("Failed to fetch tasks");
+      }
       const data = await response.json();
-      const serverTasks = data.map((t: any) => ({ ...t, completed: !!t.completed }));
-      setTasks(serverTasks);
+      console.log("App: Tasks data received:", data);
+      if (Array.isArray(data)) {
+        const serverTasks = data.map((t: any) => ({ ...t, completed: !!t.completed }));
+        setTasks(serverTasks);
+      } else {
+        console.error("App: Tasks data is not an array:", data);
+      }
       setLastSynced(new Date());
       setHasUnsavedChanges(false);
     } catch (error) {
-      console.error("Failed to fetch tasks:", error);
+      console.error("App: Error in fetchTasks:", error);
     } finally {
       setIsLoading(false);
     }
@@ -87,13 +103,24 @@ export default function App() {
 
   const fetchAspects = async () => {
     setIsAspectsLoading(true);
+    console.log("App: Fetching aspects...");
     try {
       const response = await fetch("/api/aspects");
-      if (!response.ok) throw new Error("Failed to fetch aspects");
+      console.log("App: Aspects response status:", response.status);
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error("App: Failed to fetch aspects. Status:", response.status, "Error:", errorText);
+        throw new Error("Failed to fetch aspects");
+      }
       const data = await response.json();
-      setAspects(data);
+      console.log("App: Aspects data received:", data);
+      if (Array.isArray(data)) {
+        setAspects(data);
+      } else {
+        console.error("App: Aspects data is not an array:", data);
+      }
     } catch (error) {
-      console.error("Failed to fetch aspects:", error);
+      console.error("App: Error in fetchAspects:", error);
     } finally {
       setIsAspectsLoading(false);
     }
